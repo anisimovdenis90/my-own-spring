@@ -1,12 +1,12 @@
 package org.springframework.beans.factory;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.CommonAnnotationBeanPostProcessor;
 import org.springframework.beans.factory.annotation.Resource;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.stereotype.Component;
 import org.springframework.beans.factory.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.io.File;
 import java.lang.reflect.Field;
@@ -17,11 +17,10 @@ import java.util.*;
 
 public class BeanFactory {
 
-    private Map<String, Object> singletons = new HashMap<>();
-    private List<BeanPostProcessor> postProcessors = new ArrayList<>();
+    private final Map<String, Object> singletons = new HashMap<>();
+    private final List<BeanPostProcessor> postProcessors = new ArrayList<>();
 
     public BeanFactory() {
-        postProcessors.add(new CommonAnnotationBeanPostProcessor());
     }
 
     public void addPostProcessor(BeanPostProcessor postProcessor) {
@@ -30,6 +29,10 @@ public class BeanFactory {
 
     public Object getBean(String beanName) {
         return singletons.get(beanName);
+    }
+
+    public Map<String, Object> getSingletons() {
+        return singletons;
     }
 
     public void instantiate(String basePackage) {
@@ -41,7 +44,6 @@ public class BeanFactory {
 
             while (resources.hasMoreElements()) {
                 URL resource = resources.nextElement();
-
                 File file = new File(resource.toURI());
 
                 for (File classFile : file.listFiles()) {
@@ -57,7 +59,6 @@ public class BeanFactory {
                         }
                     }
                 }
-
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -70,13 +71,14 @@ public class BeanFactory {
         }
         if (source.isFile()) {
             dst.add(source);
+            System.out.println(source);
             return;
         }
         if (source.isDirectory()) {
             File[] files;
             if ((files = source.listFiles()) != null) {
                 for (File file : files)
-                getFilesProcessing(dst, file);
+                    getFilesProcessing(dst, file);
             }
         }
     }
@@ -124,11 +126,20 @@ public class BeanFactory {
         }
     }
 
-    public void initializeBean() {
+    public void initializeBeans() {
         for (String name : singletons.keySet()) {
             Object bean = singletons.get(name);
             for (BeanPostProcessor beforePostProcessor : postProcessors) {
                 beforePostProcessor.postProcessBeforeInitialization(bean, name);
+            }
+            for (Method method : bean.getClass().getMethods()) {
+                if (method.isAnnotationPresent(PostConstruct.class)) {
+                    try {
+                        method.invoke(bean);
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
             if (bean instanceof InitializingBean) {
                 ((InitializingBean) bean).afterPropertiesSet();
